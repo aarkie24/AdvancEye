@@ -1,0 +1,78 @@
+# AdvancEye 2.0 - Command Reference Sheet
+
+===============================================================================
+1. REGISTER A NEW STUDENT PROFILE
+===============================================================================
+Command:
+  python main.py register --roll <ROLL_NO> --name "<STUDENT_NAME>"
+
+Example:
+  python main.py register --roll 25bai0052 --name "ark"
+
+Description:
+  Launches the interactive 3D Biometric Node Mesh Registration window.
+  - Turn your head slowly (left, right, up, down) to fill all 15 spatial pose nodes.
+  - Nodes transition from Slate Cyan (UNVISITED) -> Pulsing Gold (CAPTURING) -> Luminous Green (LOCKED).
+  - Press 'SPACE', 'S', or 'ENTER' once coverage reaches >= 85% to save the profile.
+  - Press 'Q' or 'ESC' to cancel.
+
+
+===============================================================================
+2. RUN LIVE REAL-TIME MULTI-FACE ATTENDANCE MONITORING
+===============================================================================
+Command:
+  python main.py run
+
+Options:
+  --source <CAMERA_INDEX_OR_RTSP_URL>   Specify custom video source (default: 0 / webcam)
+
+Examples:
+  python main.py run
+  python main.py run --source 0
+  python main.py run --source "rtsp://192.168.1.100:554/live"
+
+Description:
+  Starts real-time multi-face recognition and automated attendance logging.
+  - Bounding box color codes:
+      Green  = Recognized student profile.
+      Yellow = Attendance successfully logged (after 5 consecutive frames).
+      Red    = Unknown / Unregistered subject.
+  - Displays 3D head pose telemetry (Pitch, Yaw, Roll) and live FPS.
+  - Press 'Q' or 'ESC' to stop monitoring.
+
+
+===============================================================================
+3. LIST ALL REGISTERED STUDENT PROFILES
+===============================================================================
+Command:
+  python main.py list
+
+Description:
+  Prints a formatted tabular list of all enrolled student profiles, roll numbers,
+  captured topological node cell counts, and enrollment timestamps.
+
+
+===============================================================================
+4. VIEW ATTENDANCE LOG RECORDS
+===============================================================================
+Command:
+  python main.py attendance [--date YYYY-MM-DD]
+
+Examples:
+  python main.py attendance
+  python main.py attendance --date 2026-09-16
+
+Description:
+  Displays verified attendance logs for today or a specified date, including roll
+  numbers, student names, similarity confidence scores, and timestamps.
+
+
+===============================================================================
+5. RUN AUTOMATED TEST SUITE & BENCHMARKS
+===============================================================================
+Command:
+  python -m pytest tests/ -v -s
+
+Description:
+  Executes all 24 unit, state machine, latency benchmark (<= 10 ms), and CLI
+  end-to-end tests to verify system health.
