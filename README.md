@@ -110,8 +110,3 @@ python main.py attendance
 # Or for a specific date:
 python main.py attendance --date 2026-09-16
 ```
-
----
-
-## License
-MIT License
