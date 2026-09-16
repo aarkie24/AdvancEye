@@ -28,9 +28,10 @@ class ModelSettings:
     min_tracking_confidence: float = 0.5
 
     # Grid mapping
-    grid_rows: int = 5
+    grid_rows: int = 3
     grid_cols: int = 5
     epsilon: float = 1e-6
+
 
     # 3D Pose and Frontalization
     canonical_crop_size: Tuple[int, int] = (112, 112)

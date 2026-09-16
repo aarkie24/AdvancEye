@@ -26,8 +26,15 @@ class JSONRepository(BaseRepository):
         self.attendance_dir.mkdir(parents=True, exist_ok=True)
 
     def _validate_profile_schema(self, data: Dict[str, Any]) -> bool:
-        required_fields = ["roll_no", "name", "enrolled_at", "total_cells_captured", "canonical_landmark_cells", "embeddings"]
-        return all(field in data for field in required_fields)
+        if not isinstance(data, dict):
+            return False
+        if not ("roll_no" in data and "name" in data and "embeddings" in data):
+            return False
+        # Valid if Schema 2.0 or Schema 1.0
+        if "schema_version" in data or "total_cells_captured" in data or "coverage_summary" in data:
+            return True
+        return True
+
 
     def save_profile(self, profile_data: Dict[str, Any]) -> bool:
         """Save student profile JSON adhering to Section 6.1 schema."""

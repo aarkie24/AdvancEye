@@ -105,3 +105,56 @@ class PoseEstimator:
         except Exception as e:
             logger.error(f"Error estimating head pose: {e}")
             return None
+
+    @staticmethod
+    def quantize_pose_to_grid(
+        yaw: float,
+        pitch: float,
+        n_cols: int = 5,
+        n_rows: int = 3,
+        yaw_range: Tuple[float, float] = (-40.0, 40.0),
+        pitch_range: Tuple[float, float] = (-20.0, 20.0)
+    ) -> Tuple[int, int]:
+        """Maps continuous Euler angles (yaw, pitch) to discrete (row, col) grid cell indices.
+
+        Args:
+            yaw: Continuous yaw angle in degrees.
+            pitch: Continuous pitch angle in degrees.
+            n_cols: Number of horizontal pose columns.
+            n_rows: Number of vertical pose rows.
+            yaw_range: (min_yaw, max_yaw) bounds.
+            pitch_range: (min_pitch, max_pitch) bounds.
+
+        Returns:
+            Tuple[int, int]: Clamped (row, col) grid coordinate.
+        """
+        psi_min, psi_max = yaw_range
+        theta_min, theta_max = pitch_range
+
+        norm_yaw = (yaw - psi_min) / max(psi_max - psi_min, 1e-6)
+        col = int(np.clip(np.floor(norm_yaw * n_cols), 0, n_cols - 1))
+
+        norm_pitch = (pitch - theta_min) / max(theta_max - theta_min, 1e-6)
+        row = int(np.clip(np.floor(norm_pitch * n_rows), 0, n_rows - 1))
+
+        return row, col
+
+
+def get_grid_cell(
+    yaw: float,
+    pitch: float,
+    n_cols: int = 5,
+    n_rows: int = 3,
+    yaw_range: Tuple[float, float] = (-40.0, 40.0),
+    pitch_range: Tuple[float, float] = (-20.0, 20.0)
+) -> Tuple[int, int]:
+    """Convenience functional wrapper for PoseEstimator.quantize_pose_to_grid."""
+    return PoseEstimator.quantize_pose_to_grid(
+        yaw=yaw,
+        pitch=pitch,
+        n_cols=n_cols,
+        n_rows=n_rows,
+        yaw_range=yaw_range,
+        pitch_range=pitch_range
+    )
+
