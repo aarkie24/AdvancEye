@@ -52,7 +52,9 @@ class RegistrationView:
                         frame=display_frame,
                         landmarks=face.landmarks_pixel,
                         session_state=state,
-                        active_cell=state.active_cell
+                        active_cell=state.active_cell,
+                        pose=pose,
+                        landmarks_3d=face.landmarks_3d
                     )
 
                 # Render comprehensive HUD telemetry, progress bar, guidance
