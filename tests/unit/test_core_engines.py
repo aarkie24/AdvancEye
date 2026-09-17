@@ -1,5 +1,6 @@
 """Unit tests for Phase 2 Core ML engines (FaceMesh, PoseEstimator, FaceAligner, FaceMatcher)."""
 import unittest
+import cv2
 import numpy as np
 
 from core.face_mesh import FaceMeshEngine
@@ -37,12 +38,12 @@ class TestCoreEngines(unittest.TestCase):
         cx, cy = w / 2, h / 2
         # Use 6 canonical points projected directly
         synthetic_landmarks = np.zeros((468, 2), dtype=np.float32)
-        synthetic_landmarks[1] = [cx, cy]           # Nose
-        synthetic_landmarks[152] = [cx, cy + 100]   # Chin
-        synthetic_landmarks[263] = [cx - 60, cy - 40] # Left eye
-        synthetic_landmarks[33] = [cx + 60, cy - 40]  # Right eye
-        synthetic_landmarks[291] = [cx - 40, cy + 50] # Left mouth
-        synthetic_landmarks[61] = [cx + 40, cy + 50]  # Right mouth
+        synthetic_landmarks[1] = [cx, cy]             # Nose
+        synthetic_landmarks[152] = [cx, cy + 100]     # Chin
+        synthetic_landmarks[263] = [cx + 60, cy - 40] # Left eye (image right)
+        synthetic_landmarks[33] = [cx - 60, cy - 40]  # Right eye (image left)
+        synthetic_landmarks[291] = [cx + 35, cy + 50] # Left mouth (image right)
+        synthetic_landmarks[61] = [cx - 35, cy + 50]  # Right mouth (image left)
 
         pose = estimator.estimate_pose(synthetic_landmarks, w, h)
         self.assertIsNotNone(pose)
@@ -50,6 +51,65 @@ class TestCoreEngines(unittest.TestCase):
         self.assertIsInstance(pose.yaw, float)
         self.assertIsInstance(pose.roll, float)
         self.assertEqual(pose.rotation_matrix.shape, (3, 3))
+        # Center face should have near-zero pitch and yaw
+        self.assertAlmostEqual(pose.pitch, 0.0, delta=5.0)
+        self.assertAlmostEqual(pose.yaw, 0.0, delta=5.0)
+
+    def test_pose_estimator_directional_mapping(self):
+        """Verify that looking UP/DOWN/LEFT/RIGHT maps to the corresponding grid cells."""
+        estimator = PoseEstimator()
+        w, h = 640, 480
+        cam_matrix = estimator._build_default_camera_matrix(w, h)
+        tvec = np.array([[0.0], [0.0], [600.0]])
+        dist = np.zeros((4, 1))
+
+        # Synthetic landmarks for Looking UP (-15 deg Pitch)
+        rvec_up = np.array([[-np.radians(15.0)], [0.0], [0.0]])
+        pts_up_proj, _ = cv2.projectPoints(CANONICAL_FACE_3D, rvec_up, tvec, cam_matrix, dist)
+        up_landmarks = np.zeros((468, 2), dtype=np.float32)
+        up_landmarks[CANONICAL_LANDMARK_INDICES] = pts_up_proj.reshape(-1, 2)
+
+        pose_up = estimator.estimate_pose(up_landmarks, w, h)
+        self.assertIsNotNone(pose_up)
+        self.assertLess(pose_up.pitch, 0.0)  # Negative pitch for looking UP
+        row_up, col_up = estimator.quantize_pose_to_grid(pose_up.yaw, pose_up.pitch)
+        self.assertEqual(row_up, 0)  # Row 0 = Forehead
+
+        # Synthetic landmarks for Looking DOWN (+15 deg Pitch)
+        rvec_down = np.array([[np.radians(15.0)], [0.0], [0.0]])
+        pts_down_proj, _ = cv2.projectPoints(CANONICAL_FACE_3D, rvec_down, tvec, cam_matrix, dist)
+        down_landmarks = np.zeros((468, 2), dtype=np.float32)
+        down_landmarks[CANONICAL_LANDMARK_INDICES] = pts_down_proj.reshape(-1, 2)
+
+        pose_down = estimator.estimate_pose(down_landmarks, w, h)
+        self.assertIsNotNone(pose_down)
+        self.assertGreater(pose_down.pitch, 0.0)  # Positive pitch for looking DOWN
+        row_down, col_down = estimator.quantize_pose_to_grid(pose_down.yaw, pose_down.pitch)
+        self.assertEqual(row_down, 2)  # Row 2 = Chin
+
+        # Synthetic landmarks for Turning LEFT (-20 deg Yaw)
+        rvec_left = np.array([[0.0], [-np.radians(20.0)], [0.0]])
+        pts_left_proj, _ = cv2.projectPoints(CANONICAL_FACE_3D, rvec_left, tvec, cam_matrix, dist)
+        left_landmarks = np.zeros((468, 2), dtype=np.float32)
+        left_landmarks[CANONICAL_LANDMARK_INDICES] = pts_left_proj.reshape(-1, 2)
+
+        pose_left = estimator.estimate_pose(left_landmarks, w, h)
+        self.assertIsNotNone(pose_left)
+        self.assertLess(pose_left.yaw, 0.0)  # Negative yaw for turning LEFT
+        row_left, col_left = estimator.quantize_pose_to_grid(pose_left.yaw, pose_left.pitch)
+        self.assertIn(col_left, [3, 4])  # Right-side profile facing camera
+
+        # Synthetic landmarks for Turning RIGHT (+20 deg Yaw)
+        rvec_right = np.array([[0.0], [np.radians(20.0)], [0.0]])
+        pts_right_proj, _ = cv2.projectPoints(CANONICAL_FACE_3D, rvec_right, tvec, cam_matrix, dist)
+        right_landmarks = np.zeros((468, 2), dtype=np.float32)
+        right_landmarks[CANONICAL_LANDMARK_INDICES] = pts_right_proj.reshape(-1, 2)
+
+        pose_right = estimator.estimate_pose(right_landmarks, w, h)
+        self.assertIsNotNone(pose_right)
+        self.assertGreater(pose_right.yaw, 0.0)  # Positive yaw for turning RIGHT
+        row_right, col_right = estimator.quantize_pose_to_grid(pose_right.yaw, pose_right.pitch)
+        self.assertIn(col_right, [0, 1])  # Left-side profile facing camera
 
     def test_face_aligner_crop(self):
         aligner = FaceAligner()

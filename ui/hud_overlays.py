@@ -73,9 +73,9 @@ def draw_enrollment_hud(
 
     yaw_hint = "CENTER"
     if yaw < -12.0:
-        yaw_hint = "TURN RIGHT ->"
+        yaw_hint = "<- LOOK LEFT"
     elif yaw > 12.0:
-        yaw_hint = "<- TURN LEFT"
+        yaw_hint = "LOOK RIGHT ->"
 
     pitch_hint = "LEVEL"
     if pitch > 10.0:

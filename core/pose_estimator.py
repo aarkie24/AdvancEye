@@ -8,15 +8,22 @@ from utils.logger import get_logger
 
 logger = get_logger("PoseEstimator")
 
-# Canonical 3D facial model points (in mm/arbitrary canonical frame)
-# Key facial landmarks: Nose tip, Chin, Left eye outer corner, Right eye outer corner, Left mouth corner, Right mouth corner
+# Canonical 3D facial model points (in mm/canonical frame with camera-aligned conventions)
+# Camera frame: +X points Right, +Y points Down (towards Chin), -Z points Away from Camera (recessed features)
+# Key facial landmarks:
+# 1: Nose tip
+# 152: Chin
+# 263: Left eye outer corner (Anatomical Left = Image Right -> +X)
+# 33: Right eye outer corner (Anatomical Right = Image Left -> -X)
+# 291: Left mouth corner (Anatomical Left = Image Right -> +X)
+# 61: Right mouth corner (Anatomical Right = Image Left -> -X)
 CANONICAL_FACE_3D = np.array([
-    [0.0, 0.0, 0.0],          # Nose tip (landmark #1 or #4)
-    [0.0, -330.0, -65.0],     # Chin (landmark #152)
-    [-225.0, 170.0, -135.0],  # Left eye outer corner (landmark #263)
-    [225.0, 170.0, -135.0],   # Right eye outer corner (landmark #33)
-    [-150.0, -150.0, -125.0], # Left mouth corner (landmark #291)
-    [150.0, -150.0, -125.0]   # Right mouth corner (landmark #61)
+    [0.0, 0.0, 0.0],          # 1: Nose tip
+    [0.0, 100.0, -25.0],      # 152: Chin
+    [60.0, -40.0, -35.0],     # 263: Left eye outer corner (Image Right: +X)
+    [-60.0, -40.0, -35.0],    # 33: Right eye outer corner (Image Left: -X)
+    [35.0, 50.0, -20.0],      # 291: Left mouth corner (Image Right: +X)
+    [-35.0, 50.0, -20.0]      # 61: Right mouth corner (Image Left: -X)
 ], dtype=np.float64)
 
 # Corresponding MediaPipe landmark indices
@@ -26,9 +33,9 @@ CANONICAL_LANDMARK_INDICES = [1, 152, 263, 33, 291, 61]
 @dataclass
 class HeadPose:
     """Estimated 3D Head Pose orientation and translation."""
-    pitch: float  # Up/Down rotation in degrees
-    yaw: float    # Left/Right rotation in degrees
-    roll: float   # Tilt rotation in degrees
+    pitch: float  # Up/Down rotation in degrees (Negative = Look Up, Positive = Look Down)
+    yaw: float    # Left/Right rotation in degrees (Negative = Turn Left, Positive = Turn Right)
+    roll: float   # Tilt rotation in degrees (Positive = Tilt Clockwise, Negative = Tilt Counter-Clockwise)
     rotation_vector: np.ndarray
     translation_vector: np.ndarray
     rotation_matrix: np.ndarray
@@ -86,13 +93,12 @@ class PoseEstimator:
 
             rot_mat, _ = cv2.Rodrigues(rot_vec)
 
-            # Deconstruct rotation matrix into Euler angles (Pitch, Yaw, Roll)
-            proj_mat = np.hstack((rot_mat, trans_vec))
-            _, _, _, _, _, _, euler_angles = cv2.decomposeProjectionMatrix(proj_mat)
+            # Deconstruct rotation matrix into Euler angles (Pitch, Yaw, Roll) via RQ decomposition
+            angles, _, _, _, _, _ = cv2.RQDecomp3x3(rot_mat)
 
-            pitch = float(euler_angles[0, 0])
-            yaw = float(euler_angles[1, 0])
-            roll = float(euler_angles[2, 0])
+            pitch = float(angles[0])
+            yaw = float(angles[1])
+            roll = float(angles[2])
 
             return HeadPose(
                 pitch=pitch,
@@ -131,7 +137,9 @@ class PoseEstimator:
         psi_min, psi_max = yaw_range
         theta_min, theta_max = pitch_range
 
-        norm_yaw = (yaw - psi_min) / max(psi_max - psi_min, 1e-6)
+        # When user turns head left (yaw < 0), their right side faces the camera (screen right, higher col).
+        # When user turns head right (yaw > 0), their left side faces the camera (screen left, lower col).
+        norm_yaw = (psi_max - yaw) / max(psi_max - psi_min, 1e-6)
         col = int(np.clip(np.floor(norm_yaw * n_cols), 0, n_cols - 1))
 
         norm_pitch = (pitch - theta_min) / max(theta_max - theta_min, 1e-6)

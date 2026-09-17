@@ -46,7 +46,7 @@ class RegistrationSessionState:
                     self.nodes[(r, c)] = PoseGridCell(
                         row=r,
                         col=c,
-                        yaw_center=-32.0 + c * 16.0,
+                        yaw_center=32.0 - c * 16.0,
                         pitch_center=-13.3 + r * 13.3,
                         status=NodeStatus.UNVISITED,
                         stability_count=0,
