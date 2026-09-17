@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 
+from config.settings import get_settings
 from utils.logger import get_logger
 
 logger = get_logger("PoseEstimator")
@@ -116,24 +117,37 @@ class PoseEstimator:
     def quantize_pose_to_grid(
         yaw: float,
         pitch: float,
-        n_cols: int = 5,
-        n_rows: int = 3,
-        yaw_range: Tuple[float, float] = (-40.0, 40.0),
-        pitch_range: Tuple[float, float] = (-20.0, 20.0)
+        n_cols: Optional[int] = None,
+        n_rows: Optional[int] = None,
+        yaw_range: Optional[Tuple[float, float]] = None,
+        pitch_range: Optional[Tuple[float, float]] = None
     ) -> Tuple[int, int]:
         """Maps continuous Euler angles (yaw, pitch) to discrete (row, col) grid cell indices.
 
         Args:
             yaw: Continuous yaw angle in degrees.
             pitch: Continuous pitch angle in degrees.
-            n_cols: Number of horizontal pose columns.
-            n_rows: Number of vertical pose rows.
-            yaw_range: (min_yaw, max_yaw) bounds.
-            pitch_range: (min_pitch, max_pitch) bounds.
+            n_cols: Number of horizontal pose columns (defaults to settings.registration.grid_cols).
+            n_rows: Number of vertical pose rows (defaults to settings.registration.grid_rows).
+            yaw_range: (min_yaw, max_yaw) bounds (defaults to settings.registration.yaw_range).
+            pitch_range: (min_pitch, max_pitch) bounds (defaults to settings.registration.pitch_range).
 
         Returns:
             Tuple[int, int]: Clamped (row, col) grid coordinate.
         """
+        settings = get_settings()
+        reg_cfg = getattr(settings, "registration", None)
+        model_cfg = getattr(settings, "models", None)
+
+        if n_cols is None:
+            n_cols = getattr(reg_cfg, "grid_cols", getattr(model_cfg, "grid_cols", 5))
+        if n_rows is None:
+            n_rows = getattr(reg_cfg, "grid_rows", getattr(model_cfg, "grid_rows", 3))
+        if yaw_range is None:
+            yaw_range = getattr(reg_cfg, "yaw_range", getattr(model_cfg, "yaw_range", (-50.0, 50.0)))
+        if pitch_range is None:
+            pitch_range = getattr(reg_cfg, "pitch_range", getattr(model_cfg, "pitch_range", (-30.0, 30.0)))
+
         psi_min, psi_max = yaw_range
         theta_min, theta_max = pitch_range
 
@@ -151,10 +165,10 @@ class PoseEstimator:
 def get_grid_cell(
     yaw: float,
     pitch: float,
-    n_cols: int = 5,
-    n_rows: int = 3,
-    yaw_range: Tuple[float, float] = (-40.0, 40.0),
-    pitch_range: Tuple[float, float] = (-20.0, 20.0)
+    n_cols: Optional[int] = None,
+    n_rows: Optional[int] = None,
+    yaw_range: Optional[Tuple[float, float]] = None,
+    pitch_range: Optional[Tuple[float, float]] = None
 ) -> Tuple[int, int]:
     """Convenience functional wrapper for PoseEstimator.quantize_pose_to_grid."""
     return PoseEstimator.quantize_pose_to_grid(

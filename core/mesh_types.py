@@ -4,6 +4,8 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 import numpy as np
 
+from config.settings import get_settings
+
 
 class NodeStatus(str, Enum):
     """Status of a biometric pose grid node."""
@@ -26,11 +28,13 @@ class PoseGridCell:
 
 @dataclass
 class RegistrationSessionState:
-    """Encapsulates the complete active enrollment session state across 15 pose nodes."""
+    """Encapsulates the complete active enrollment session state across pose nodes."""
     roll_no: str
     name: str
-    grid_rows: int = 3
-    grid_cols: int = 5
+    grid_rows: Optional[int] = None
+    grid_cols: Optional[int] = None
+    yaw_range: Optional[Tuple[float, float]] = None
+    pitch_range: Optional[Tuple[float, float]] = None
     nodes: Dict[Tuple[int, int], PoseGridCell] = field(default_factory=dict)
     active_cell: Optional[Tuple[int, int]] = None
     total_cells: int = 15
@@ -39,15 +43,36 @@ class RegistrationSessionState:
     is_ready_to_save: bool = False
 
     def __post_init__(self):
+        settings = get_settings()
+        reg_cfg = getattr(settings, "registration", None)
+        model_cfg = getattr(settings, "models", None)
+
+        if self.grid_rows is None:
+            self.grid_rows = getattr(reg_cfg, "grid_rows", getattr(model_cfg, "grid_rows", 3))
+        if self.grid_cols is None:
+            self.grid_cols = getattr(reg_cfg, "grid_cols", getattr(model_cfg, "grid_cols", 5))
+        if self.yaw_range is None:
+            self.yaw_range = getattr(reg_cfg, "yaw_range", getattr(model_cfg, "yaw_range", (-50.0, 50.0)))
+        if self.pitch_range is None:
+            self.pitch_range = getattr(reg_cfg, "pitch_range", getattr(model_cfg, "pitch_range", (-30.0, 30.0)))
+
+        self.total_cells = self.grid_rows * self.grid_cols
+
         if not self.nodes:
-            self.total_cells = self.grid_rows * self.grid_cols
+            psi_min, psi_max = self.yaw_range
+            theta_min, theta_max = self.pitch_range
+            yaw_step = (psi_max - psi_min) / max(self.grid_cols, 1)
+            pitch_step = (theta_max - theta_min) / max(self.grid_rows, 1)
+
             for r in range(self.grid_rows):
+                p_center = (theta_min + pitch_step / 2.0) + r * pitch_step
                 for c in range(self.grid_cols):
+                    y_center = (psi_max - yaw_step / 2.0) - c * yaw_step
                     self.nodes[(r, c)] = PoseGridCell(
                         row=r,
                         col=c,
-                        yaw_center=32.0 - c * 16.0,
-                        pitch_center=-13.3 + r * 13.3,
+                        yaw_center=round(y_center, 1),
+                        pitch_center=round(p_center, 1),
                         status=NodeStatus.UNVISITED,
                         stability_count=0,
                         embedding=None

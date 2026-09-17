@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 
+from config.settings import get_settings
 from core.mesh_types import NodeStatus, RegistrationSessionState
 from core.pose_estimator import HeadPose
 
@@ -67,20 +68,31 @@ def draw_enrollment_hud(
     draw_hud_panel(frame, card_x, 195, card_w, 135)
     cv2.putText(frame, "[ POSE TELEMETRY ]", (card_x + 15, 218), cv2.FONT_HERSHEY_SIMPLEX, 0.45, HUD_ACCENT_BLUE, 1, cv2.LINE_AA)
     
+    settings = get_settings()
+    reg_cfg = getattr(settings, "registration", settings.models)
+
     pitch = pose.pitch if pose else 0.0
     yaw = pose.yaw if pose else 0.0
     roll = pose.roll if pose else 0.0
 
+    yaw_range = session_state.yaw_range or reg_cfg.yaw_range
+    pitch_range = session_state.pitch_range or reg_cfg.pitch_range
+    grid_cols = session_state.grid_cols or reg_cfg.grid_cols
+    grid_rows = session_state.grid_rows or reg_cfg.grid_rows
+
+    yaw_deadzone = (yaw_range[1] - yaw_range[0]) / (2.0 * max(grid_cols, 1))
+    pitch_deadzone = (pitch_range[1] - pitch_range[0]) / (2.0 * max(grid_rows, 1))
+
     yaw_hint = "CENTER"
-    if yaw < -12.0:
+    if yaw < -yaw_deadzone:
         yaw_hint = "<- LOOK LEFT"
-    elif yaw > 12.0:
+    elif yaw > yaw_deadzone:
         yaw_hint = "LOOK RIGHT ->"
 
     pitch_hint = "LEVEL"
-    if pitch > 10.0:
+    if pitch > pitch_deadzone:
         pitch_hint = "LOOK DOWN"
-    elif pitch < -10.0:
+    elif pitch < -pitch_deadzone:
         pitch_hint = "LOOK UP"
 
     cv2.putText(frame, f"Pitch: {pitch:+5.1f} deg ({pitch_hint})", (card_x + 15, 245), cv2.FONT_HERSHEY_SIMPLEX, 0.45, HUD_TEXT_WHITE, 1, cv2.LINE_AA)
@@ -108,8 +120,9 @@ def draw_enrollment_hud(
     # 5. Bottom Instruction & Action Bar
     draw_hud_panel(frame, 0, h - 60, w, 60, alpha=0.90)
 
+    completion_pct = getattr(reg_cfg, "completion_threshold_pct", 85.0)
     if session_state.is_ready_to_save:
-        instruction = "[*] COVERAGE COMPLETE (>=85%)! Press [SPACE] or [S] to Save Profile."
+        instruction = f"[*] COVERAGE COMPLETE (>={completion_pct:.0f}%)! Press [SPACE] or [S] to Save Profile."
         inst_color = HUD_GREEN
     else:
         instruction = f"[!] INSTRUCTION: Rotate and tilt head slowly until active node turns GREEN."

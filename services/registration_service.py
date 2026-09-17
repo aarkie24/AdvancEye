@@ -39,6 +39,12 @@ class DynamicRegistrationService:
         self.face_aligner = face_aligner or FaceAligner(self.settings.models)
         self.face_embedder = face_embedder or FaceEmbedder(self.settings.models)
 
+        # Dynamic registration configuration derived from settings
+        reg_cfg = getattr(self.settings, "registration", None)
+        self.stable_frames_required: int = getattr(reg_cfg, "stable_frames_required", 8)
+        self.min_sharpness_laplacian: float = getattr(reg_cfg, "min_sharpness_laplacian", 60.0)
+        self.completion_threshold_pct: float = getattr(reg_cfg, "completion_threshold_pct", 85.0)
+
         self.state: Optional[RegistrationSessionState] = None
         self.last_cell: Optional[Tuple[int, int]] = None
         self.stable_counter: int = 0
@@ -46,11 +52,16 @@ class DynamicRegistrationService:
 
     def start_session(self, roll_no: str, name: str) -> RegistrationSessionState:
         """Initialize a new registration session state."""
+        reg_cfg = getattr(self.settings, "registration", None)
+        model_cfg = getattr(self.settings, "models", None)
+
         self.state = RegistrationSessionState(
             roll_no=roll_no.strip(),
             name=name.strip(),
-            grid_rows=self.settings.models.grid_rows if hasattr(self.settings.models, "grid_rows") else 3,
-            grid_cols=self.settings.models.grid_cols if hasattr(self.settings.models, "grid_cols") else 5
+            grid_rows=getattr(reg_cfg, "grid_rows", getattr(model_cfg, "grid_rows", 3)),
+            grid_cols=getattr(reg_cfg, "grid_cols", getattr(model_cfg, "grid_cols", 5)),
+            yaw_range=getattr(reg_cfg, "yaw_range", getattr(model_cfg, "yaw_range", (-50.0, 50.0))),
+            pitch_range=getattr(reg_cfg, "pitch_range", getattr(model_cfg, "pitch_range", (-30.0, 30.0)))
         )
         self.last_cell = None
         self.stable_counter = 0
@@ -88,8 +99,8 @@ class DynamicRegistrationService:
             pitch=pose.pitch,
             n_cols=self.state.grid_cols,
             n_rows=self.state.grid_rows,
-            yaw_range=(-40.0, 40.0),
-            pitch_range=(-20.0, 20.0)
+            yaw_range=self.state.yaw_range,
+            pitch_range=self.state.pitch_range
         )
         self.state.active_cell = cell
         node = self.state.nodes[cell]
@@ -111,11 +122,11 @@ class DynamicRegistrationService:
 
 
         # Gate checks: Temporal stability + Laplacian Sharpness + Embedding Extraction
-        if self.stable_counter >= self.STABLE_FRAMES_REQUIRED:
+        if self.stable_counter >= self.stable_frames_required:
             gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
             sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
-            if sharpness >= self.MIN_SHARPNESS_LAPLACIAN:
+            if sharpness >= self.min_sharpness_laplacian:
                 crop = self.face_aligner.frontalize_and_crop(frame_bgr, face.bbox_pixel, pose)
                 embedding = self.face_embedder.extract_embedding(crop)
 
@@ -128,7 +139,7 @@ class DynamicRegistrationService:
                         1 for n in self.state.nodes.values() if n.status == NodeStatus.LOCKED
                     )
                     self.state.coverage_pct = (self.state.locked_count / self.state.total_cells) * 100.0
-                    self.state.is_ready_to_save = (self.state.coverage_pct >= self.COMPLETION_THRESHOLD_PCT)
+                    self.state.is_ready_to_save = (self.state.coverage_pct >= self.completion_threshold_pct)
                     self.stable_counter = 0
 
         return face, pose, self.state, self.stable_counter

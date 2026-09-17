@@ -3,6 +3,7 @@ import unittest
 import cv2
 import numpy as np
 
+from config.settings import get_settings
 from core.face_mesh import FaceMeshEngine
 from core.pose_estimator import PoseEstimator, CANONICAL_LANDMARK_INDICES, CANONICAL_FACE_3D
 from core.face_aligner import FaceAligner
@@ -56,7 +57,9 @@ class TestCoreEngines(unittest.TestCase):
         self.assertAlmostEqual(pose.yaw, 0.0, delta=5.0)
 
     def test_pose_estimator_directional_mapping(self):
-        """Verify that looking UP/DOWN/LEFT/RIGHT maps to the corresponding grid cells."""
+        """Verify that looking UP/DOWN/LEFT/RIGHT maps to the corresponding grid cells derived from settings."""
+        settings = get_settings()
+        reg_cfg = getattr(settings, "registration", settings.models)
         estimator = PoseEstimator()
         w, h = 640, 480
         cam_matrix = estimator._build_default_camera_matrix(w, h)
@@ -85,7 +88,7 @@ class TestCoreEngines(unittest.TestCase):
         self.assertIsNotNone(pose_down)
         self.assertGreater(pose_down.pitch, 0.0)  # Positive pitch for looking DOWN
         row_down, col_down = estimator.quantize_pose_to_grid(pose_down.yaw, pose_down.pitch)
-        self.assertEqual(row_down, 2)  # Row 2 = Chin
+        self.assertEqual(row_down, reg_cfg.grid_rows - 1)  # Last Row = Chin
 
         # Synthetic landmarks for Turning LEFT (-20 deg Yaw)
         rvec_left = np.array([[0.0], [-np.radians(20.0)], [0.0]])
@@ -97,7 +100,7 @@ class TestCoreEngines(unittest.TestCase):
         self.assertIsNotNone(pose_left)
         self.assertLess(pose_left.yaw, 0.0)  # Negative yaw for turning LEFT
         row_left, col_left = estimator.quantize_pose_to_grid(pose_left.yaw, pose_left.pitch)
-        self.assertIn(col_left, [3, 4])  # Right-side profile facing camera
+        self.assertGreaterEqual(col_left, reg_cfg.grid_cols // 2 + 1)  # Right-side profile facing camera
 
         # Synthetic landmarks for Turning RIGHT (+20 deg Yaw)
         rvec_right = np.array([[0.0], [np.radians(20.0)], [0.0]])
@@ -109,7 +112,31 @@ class TestCoreEngines(unittest.TestCase):
         self.assertIsNotNone(pose_right)
         self.assertGreater(pose_right.yaw, 0.0)  # Positive yaw for turning RIGHT
         row_right, col_right = estimator.quantize_pose_to_grid(pose_right.yaw, pose_right.pitch)
-        self.assertIn(col_right, [0, 1])  # Left-side profile facing camera
+        self.assertLessEqual(col_right, reg_cfg.grid_cols // 2 - 1)  # Left-side profile facing camera
+
+    def test_pose_grid_thresholds(self):
+        """Test exact angular thresholds for neutral deadzone and cell transitions derived from settings."""
+        settings = get_settings()
+        reg_cfg = getattr(settings, "registration", settings.models)
+        estimator = PoseEstimator()
+
+        mid_row = reg_cfg.grid_rows // 2
+        mid_col = reg_cfg.grid_cols // 2
+
+        # Center deadzone (neutral looking straight)
+        self.assertEqual(estimator.quantize_pose_to_grid(yaw=0.0, pitch=0.0), (mid_row, mid_col))
+        self.assertEqual(estimator.quantize_pose_to_grid(yaw=5.0, pitch=-5.0), (mid_row, mid_col))
+        self.assertEqual(estimator.quantize_pose_to_grid(yaw=-5.0, pitch=5.0), (mid_row, mid_col))
+
+        # Distinct movements
+        # Up-Center (row 0, center col)
+        self.assertEqual(estimator.quantize_pose_to_grid(yaw=0.0, pitch=reg_cfg.pitch_range[0] * 0.7), (0, mid_col))
+        # Down-Center (last row, center col)
+        self.assertEqual(estimator.quantize_pose_to_grid(yaw=0.0, pitch=reg_cfg.pitch_range[1] * 0.7), (reg_cfg.grid_rows - 1, mid_col))
+        # Left turn (Right profile facing camera -> highest col)
+        self.assertEqual(estimator.quantize_pose_to_grid(yaw=reg_cfg.yaw_range[0] * 0.8, pitch=0.0), (mid_row, reg_cfg.grid_cols - 1))
+        # Right turn (Left profile facing camera -> col 0)
+        self.assertEqual(estimator.quantize_pose_to_grid(yaw=reg_cfg.yaw_range[1] * 0.8, pitch=0.0), (mid_row, 0))
 
     def test_face_aligner_crop(self):
         aligner = FaceAligner()

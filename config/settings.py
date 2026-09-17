@@ -30,6 +30,8 @@ class ModelSettings:
     # Grid mapping
     grid_rows: int = 3
     grid_cols: int = 5
+    yaw_range: Tuple[float, float] = (-60.0, 60.0)
+    pitch_range: Tuple[float, float] = (-40.0, 40.0)
     epsilon: float = 1e-6
 
 
@@ -43,6 +45,18 @@ class ModelSettings:
     embedding_dim: int = 512
     onnx_execution_provider: str = "CPUExecutionProvider"  # or CUDAExecutionProvider
     similarity_threshold: float = 0.40  # tau_sim
+
+
+@dataclass(frozen=True)
+class RegistrationSettings:
+    """Biometric dynamic mesh registration parameters."""
+    grid_rows: int = 3
+    grid_cols: int = 5
+    yaw_range: Tuple[float, float] = (-50.0, 50.0)
+    pitch_range: Tuple[float, float] = (-30.0, 30.0)
+    stable_frames_required: int = 8
+    min_sharpness_laplacian: float = 60.0
+    completion_threshold_pct: float = 85.0
 
 
 @dataclass(frozen=True)
@@ -75,6 +89,7 @@ class AppSettings:
     debug: bool = False
     camera: CameraSettings = field(default_factory=CameraSettings)
     models: ModelSettings = field(default_factory=ModelSettings)
+    registration: RegistrationSettings = field(default_factory=RegistrationSettings)
     attendance: AttendanceSettings = field(default_factory=AttendanceSettings)
     storage: StorageSettings = field(default_factory=StorageSettings)
 
